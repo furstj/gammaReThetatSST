@@ -281,14 +281,14 @@ void gammaReThetatSST::ReThetat(volScalarField& ReThetatField) const
                 ReThetatOld = ReThetatNew;
                 lambda = max(
                         min(
-                        sqr(ReThetatOld)*nu()()[cellI]*dUds/(sqr(max(mag(U_[cellI]),SMALL))),
+                        sqr(ReThetatOld)*nu()[cellI]*dUds/(sqr(max(mag(U_[cellI]),SMALL))),
                     scalar(0.1)
                     ),
                     scalar(-0.1)
                 );
                 K = max(
                         min(
-                        nu()()[cellI]*dUds/(sqr(max(mag(U_[cellI]),SMALL))),
+                        nu()[cellI]*dUds/(sqr(max(mag(U_[cellI]),SMALL))),
                     scalar(3e-6)
                     ),
                     scalar(-3e-6)
@@ -421,12 +421,10 @@ gammaReThetatSST::gammaReThetatSST
 (
     const volVectorField& U,
     const surfaceScalarField& phi,
-    transportModel& lamTransportModel,
-    const word& turbulenceModelName,
-    const word& modelName
+    transportModel& lamTransportModel
 )
 :
-    RASModel(modelName, U, phi, lamTransportModel, turbulenceModelName),
+    RASModel(typeName, U, phi, lamTransportModel),
 
     ca1_
     (
@@ -703,7 +701,7 @@ gammaReThetatSST::gammaReThetatSST
                 "RASProperties",
                 U.time().constant(),
                 U.db(),
-                IOobject::MUST_READ_IF_MODIFIED,
+                IOobject::MUST_READ,
                 IOobject::NO_WRITE,
                 false
             )
@@ -795,7 +793,7 @@ tmp<fvVectorMatrix> gammaReThetatSST::divDevReff(volVectorField& U) const
     return
     (
       - fvm::laplacian(nuEff(), U)
-      - fvc::div(nuEff()*dev(T(fvc::grad(U))))
+      - fvc::div(nuEff()*dev(fvc::grad(U)().T()))
     );
 }
 
@@ -811,7 +809,7 @@ tmp<fvVectorMatrix> gammaReThetatSST::divDevRhoReff
     return
     (
       - fvm::laplacian(muEff, U)
-      - fvc::div(muEff*dev(T(fvc::grad(U))))
+      - fvc::div(muEff*dev(fvc::grad(U)().T()))
     );
 }
 
@@ -867,7 +865,7 @@ void gammaReThetatSST::correct()
     }
 
     volScalarField S2(magSqr(symm(fvc::grad(U_))));
-    volScalarField G(GName(), nut_*2*S2);
+    volScalarField G("RASModel::G", nut_*2*S2);
 
     // Update omega and G at the wall
     omega_.boundaryField().updateCoeffs();
@@ -899,10 +897,8 @@ void gammaReThetatSST::correct()
 
     omegaEqn().relax();
 
-    omegaEqn().boundaryManipulate(omega_.boundaryField());
-
     solve(omegaEqn);
-    bound(omega_, omegaMin_);
+    bound(omega_, omega0_);
 
 
     volScalarField gammaEff
@@ -928,7 +924,7 @@ void gammaReThetatSST::correct()
 
     kEqn().relax();
     solve(kEqn);
-    bound(k_, kMin_);
+    bound(k_, k0_);
 
 
     // Re-calculate viscosity
